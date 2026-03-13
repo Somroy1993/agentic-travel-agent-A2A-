@@ -1,5 +1,5 @@
 import streamlit as st
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from crewai_tools import SerperDevTool, ScrapeWebsiteTool  # pip install crewai[tools]
 from langchain_groq import ChatGroq
 import os
@@ -7,8 +7,8 @@ from datetime import date
 import json
 
 # Secrets
-groq_api = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
-serper_api = st.secrets.get("SERPER_API_KEY", "")  # Optional for search
+groq_api = st.secrets["groq"]["api_key"]
+serper_api = st.secrets["serper"]["api_key"]  # Optional for search
 
 st.set_page_config(page_title="Agentic Travel Agent", layout="wide")
 st.title("✈️ Agentic Travel Agent A2A")
@@ -40,7 +40,12 @@ if serper_api:
     tools.append(search_tool)
 
 # LLM
-llm = ChatGroq(groq_api_key=groq_api, model="llama-3.3-70b-versatile", temperature=0.2)
+# llm = ChatGroq(groq_api_key=groq_api, model="llama-3.3-70b-versatile", temperature=0.2)
+llm = LLM(
+    model="llama-3.3-70b-versatile",
+    base_url="https://api.groq.com/openai/v1",
+    api_key=st.secrets["groq"]["api_key"]
+)
 
 # Agents
 researcher = Agent(
@@ -49,7 +54,9 @@ researcher = Agent(
     backstory="Expert in global travel trends and hidden gems.",
     llm=llm,
     tools=tools,
-    verbose=True
+    verbose=True,
+    allow_default_llm=False,
+    memory=False
 )
 
 planner = Agent(
@@ -57,7 +64,9 @@ planner = Agent(
     goal="Create detailed daily plans based on research, interests, and budget.",
     backstory="Master organizer for seamless trips.",
     llm=llm,
-    verbose=True
+    verbose=True,
+    allow_default_llm=False,
+    memory=False
 )
 
 booker = Agent(
@@ -65,33 +74,40 @@ booker = Agent(
     goal="Suggest flights/hotels with prices, links, and alternatives.",
     backstory="Saves money on bookings.",
     llm=llm,
-    verbose=True
+    verbose=True,
+    allow_default_llm=False,
+    memory=False
 )
 
 # Tasks
 research_task = Task(
     description="Research {destination} from {start_date} to {end_date}: attractions, weather, costs for {travelers}. Focus on {interests}.",
+    expected_output="Comprehensive research summary: top attractions, weather forecast, average costs, tailored to interests and group size.",
     agent=researcher
 )
 
 plan_task = Task(
     description="Plan itinerary using research, fit {budget} for {travelers}. Include meals/transport.",
+    expected_output="Detailed 5-7 day itinerary with daily schedule, activities, meals, transport, total estimated cost breakdown.",
     agent=planner,
     context=[research_task]
 )
 
 book_task = Task(
     description="Recommend flights/hotels for {destination}, dates {start_date}-{end_date}, under {budget}.",
+    expected_output="Top 3 flight/hotel options with prices, links/providers, booking tips, and alternatives.",
     agent=booker,
     context=[research_task, plan_task]
 )
+
 
 # Crew
 crew = Crew(
     agents=[researcher, planner, booker],
     tasks=[research_task, plan_task, book_task],
     process=Process.sequential,
-    verbose=2
+    verbose=2,
+    memory=False
 )
 
 # Chat input
